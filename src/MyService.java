@@ -13,13 +13,14 @@ public class MyService {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
 
             router.addRoute("/hello", req -> {
-                String name = req.getQueryParams().get("name");
 
-                if (name == null) {
-                    return "Hello Guest!";
+                if (req.getMethod().equals("POST")) {
+                    return "Received POST body: " + req.getBody();
                 }
 
-                return "Hello " + name;
+                String name = req.getQueryParams().get("name");
+
+                return (name == null) ? "Hello Guest" : "Hello " + name;
             });
 
             System.out.println("Server started on port " + port);
@@ -42,9 +43,30 @@ public class MyService {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(input))
                 ){
             String requestLine = reader.readLine();
+            if (requestLine == null) return;
+
             System.out.println(requestLine);
 
-            if (requestLine == null) return;
+// Read headers (we stop at empty line)
+            String line;
+            int contentLength = 0;
+
+            while (!(line = reader.readLine()).isEmpty()) {
+                System.out.println(line);
+
+                if (line.startsWith("Content-Length:")) {
+                    contentLength = Integer.parseInt(line.split(":")[1].trim());
+                }
+            }
+
+// Read body (IMPORTANT PART)
+            StringBuilder body = new StringBuilder();
+
+            if (contentLength > 0) {
+                char[] buffer = new char[contentLength];
+                reader.read(buffer, 0, contentLength);
+                body.append(buffer);
+            }
 
             String[] parts = requestLine.split(" ");
             String method = parts[0];
@@ -69,7 +91,8 @@ public class MyService {
                 path = fullPath;
             }
 
-            HttpRequest request = new HttpRequest(method, path, queryParams);
+            HttpRequest request =
+                    new HttpRequest(method, path, queryParams, body.toString());
 
             System.out.println("Method: " + method);
             System.out.println("Path: " + path);
