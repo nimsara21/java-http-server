@@ -1,6 +1,8 @@
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MyService {
     private static Router router = new Router();
@@ -10,8 +12,15 @@ public class MyService {
 
         try (ServerSocket serverSocket = new ServerSocket(port)) {
 
-            router.addRoute("/hello", req -> "Hello from router!");
-            router.addRoute("/test", req -> "Test route working!");
+            router.addRoute("/hello", req -> {
+                String name = req.getQueryParams().get("name");
+
+                if (name == null) {
+                    return "Hello Guest!";
+                }
+
+                return "Hello " + name;
+            });
 
             System.out.println("Server started on port " + port);
 
@@ -39,10 +48,28 @@ public class MyService {
 
             String[] parts = requestLine.split(" ");
             String method = parts[0];
-            String path = parts[1];
+            String fullPath = parts[1];
 
+            String path;
+            Map<String, String> queryParams = new HashMap<>();
 
-            HttpRequest request = new HttpRequest(method, path);
+            if (fullPath.contains("?")) {
+                String[] split = fullPath.split("\\?");
+                path = split[0];
+
+                String queryString = split[1];
+
+                String[] pairs = queryString.split("&");
+
+                for (String pair : pairs) {
+                    String[] kv = pair.split("=");
+                    queryParams.put(kv[0], kv[1]);
+                }
+            } else {
+                path = fullPath;
+            }
+
+            HttpRequest request = new HttpRequest(method, path, queryParams);
 
             System.out.println("Method: " + method);
             System.out.println("Path: " + path);
