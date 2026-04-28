@@ -3,9 +3,12 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 
 public class MyService {
     private static Router router = new Router();
+    private static final ObjectMapper mapper = new ObjectMapper();
     public static void main(String[] args) {
         int port = 8080;
 
@@ -21,6 +24,21 @@ public class MyService {
                 String name = req.getQueryParams().get("name");
 
                 return (name == null) ? "Hello Guest" : "Hello " + name;
+            });
+
+            router.addRoute("/user", req -> {
+
+                if (req.getMethod().equals("POST")) {
+                    Map<String, Object> json = req.getJsonBody();
+
+                    String name = (String) json.get("name");
+                    Number ageNum = (Number) json.get("age");
+                    int age = ageNum.intValue();
+
+                    return "User created: " + name + " (" + age + ")";
+                }
+
+                return "Send a POST request";
             });
 
             System.out.println("Server started on port " + port);
@@ -50,15 +68,19 @@ public class MyService {
 // Read headers (we stop at empty line)
             String line;
             int contentLength = 0;
+            String contentTypeHeader = "";
 
-            while (!(line = reader.readLine()).isEmpty()) {
+            while ((line = reader.readLine()) != null && !line.isEmpty()) {
                 System.out.println(line);
 
                 if (line.startsWith("Content-Length:")) {
                     contentLength = Integer.parseInt(line.split(":")[1].trim());
                 }
-            }
 
+                if (line.startsWith("Content-Type:")) {
+                    contentTypeHeader = line.split(":")[1].trim();
+                }
+            }
 // Read body (IMPORTANT PART)
             StringBuilder body = new StringBuilder();
 
@@ -84,15 +106,26 @@ public class MyService {
                 String[] pairs = queryString.split("&");
 
                 for (String pair : pairs) {
-                    String[] kv = pair.split("=");
+                    String[] kv = pair.split("=", 2);
                     queryParams.put(kv[0], kv[1]);
                 }
             } else {
                 path = fullPath;
             }
 
+
+            Map<String, Object> jsonMap = new HashMap<>();
+
+            if (contentTypeHeader.toLowerCase().contains("application/json") && !body.toString().isEmpty()) {
+                try {
+                    jsonMap = mapper.readValue(body.toString(), Map.class);
+                } catch (Exception e) {
+                    // ignore
+                }
+            }
+
             HttpRequest request =
-                    new HttpRequest(method, path, queryParams, body.toString());
+                    new HttpRequest(method, path, queryParams, body.toString(), jsonMap);
 
             System.out.println("Method: " + method);
             System.out.println("Path: " + path);
@@ -101,10 +134,14 @@ public class MyService {
 
             String responseBody;
             String statusLine;
-
+            String contentType = "text/plain";
             if (handler != null) {
                 responseBody = handler.handle(request);
                 statusLine = "HTTP/1.1 200 OK";
+                String trimmed = responseBody.trim();
+                if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+                    contentType = "application/json";
+                }
             } else {
                 responseBody = "404 Not Found";
                 statusLine = "HTTP/1.1 404 Not Found";
@@ -112,15 +149,15 @@ public class MyService {
 
             String httpResponse =
                     statusLine + "\r\n" +
-                            "Content-Type: text/plain\r\n" +
+                            "Content-Type: " + contentType + "\r\n" +
                             "Content-Length: " + responseBody.length() + "\r\n" +
                             "\r\n" +
                             responseBody;
 
-            output.write(httpResponse.getBytes());
+            output.write(httpResponse.getBytes("UTF-8"));
             output.flush();
 
-            socket.close();
+
 
         } catch (IOException e) {
             e.printStackTrace();
